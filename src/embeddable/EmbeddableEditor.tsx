@@ -1,20 +1,27 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { EditorState, Plugin } from 'prosemirror-state'
+import * as React from 'react'
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
+import { EditorState, Plugin, Transaction } from 'prosemirror-state'
+import { Transform } from 'prosemirror-transform'
 import { EditorView } from 'prosemirror-view'
 import { keymap } from 'prosemirror-keymap'
-import { baseKeymap } from 'prosemirror-commands'
-import { history } from 'prosemirror-history'
-import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list'
+import { baseKeymap, toggleMark, setBlockType, wrapIn } from 'prosemirror-commands'
+import { history, undo, redo } from 'prosemirror-history'
+import { splitListItem, liftListItem, sinkListItem, wrapInList } from 'prosemirror-schema-list'
 import { imagePlugin, defaultSettings as imageDefaultSettings } from 'prosemirror-image-plugin'
 import 'prosemirror-image-plugin/dist/styles/common.css'
 import 'prosemirror-image-plugin/dist/styles/sideResize.css'
+import './theme.css'
+
+import { Bold, Italic, List, ListOrdered, Quote, Redo, Undo, Sparkles, Image as ImageIcon, BookOpen } from 'lucide-react'
 
 import { citationSchema, insertCitation } from '../lib/prosemirror-schema'
 import { createCitationPlugin } from '../lib/citation-plugin'
-import { parseMarkdownToProseMirror, convertProseMirrorToMarkdown } from '../services/markdownService'
+import { parseMarkdownToProseMirror, convertProseMirrorToMarkdown, resolveImageUrl } from '../services/markdownService'
 import { useDiffTransition } from '../hooks/useDiffTransition'
-import { mapTextRangeToDocRange } from '@shared/services/FrontendPositionResolver'
+import { mapTextRangeToDocRange } from '../utils/positionResolver'
 import { createHighlightPlugin, embeddableHighlightPluginKey } from './highlightPlugin'
+// Import NodeView for frontmatter
+import { FrontmatterNodeView } from './FrontmatterNodeView'
 import type { EmbeddableEditorProps } from './types'
 import { Button } from '@/components/ui/button'
 import ImageEditDialog from '../components/ImageEditDialog'
@@ -60,7 +67,9 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     chatSidebar,
     onReady,
     onError,
-    onSelectionChange
+    onSelectionChange,
+    ticketId,
+    apiBaseUrl
   } = props
 
   const editorRef = useRef<HTMLDivElement | null>(null)
@@ -71,6 +80,9 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
   const [imageEditState, setImageEditState] = useState<{ pos: number; attrs: any } | null>(null)
   const documentId = useMemo(() => props.documentId || `embeddable-${Date.now()}`, [props.documentId])
 
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+  
   const { showDiffTransition, clearDiffTransition } = useDiffTransition(() => viewRef.current, { mode: 'simple', duration: 1200 })
 
   useEffect(() => {
@@ -101,6 +113,71 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     return view.state.doc.textContent || ''
   }, [])
 
+  // Get API base URL dynamically
+  const getApiBaseUrl = useCallback(() => {
+    if (apiBaseUrl) return apiBaseUrl
+
+    // Fallback: construct API URL similar to api.ts
+    if (typeof window !== 'undefined') {
+      const { protocol, hostname, port } = window.location
+      const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1'
+      const isDevFrontend = isLocalHost && ['3000', '3001', '5173', '4173'].includes(port || '')
+      if (isDevFrontend) {
+        return `${protocol}//localhost:8000/api`
+      }
+      return `${protocol}//${hostname}${port ? `:${port}` : ''}/api`
+    }
+
+    return '/api'
+  }, [apiBaseUrl])
+
+  // Function to process image nodes and resolve URLs in a document
+  const processImageNodesInDoc = useCallback((doc: any) => {
+    if (!doc || !doc.descendants) return doc
+
+    const baseUrl = getApiBaseUrl()
+    const tr = new Transform(doc)
+    let modified = false
+
+    doc.descendants((node: any, pos: number) => {
+      if (node.type.name === 'image' && node.attrs.src) {
+        const resolvedSrc = resolveImageUrl(node.attrs.src, ticketId, baseUrl)
+        if (resolvedSrc !== node.attrs.src) {
+          tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            src: resolvedSrc
+          })
+          modified = true
+        }
+      }
+    })
+
+    return modified ? tr.doc : doc
+  }, [ticketId, getApiBaseUrl])
+
+  // Function to process image nodes and resolve URLs (for post-view creation updates)
+  const processImageNodes = useCallback((doc: any) => {
+    if (!doc || !doc.descendants) return doc
+
+    const baseUrl = getApiBaseUrl()
+    doc.descendants((node: any, pos: number) => {
+      if (node.type.name === 'image' && node.attrs.src) {
+        const resolvedSrc = resolveImageUrl(node.attrs.src, ticketId, baseUrl)
+        if (resolvedSrc !== node.attrs.src && viewRef.current) {
+          // Update the image src if it was resolved
+          const tr = viewRef.current.state.tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            src: resolvedSrc
+          })
+          tr.setMeta('addToHistory', false)
+          viewRef.current.dispatch(tr)
+        }
+      }
+    })
+
+    return doc
+  }, [ticketId, getApiBaseUrl])
+
   useEffect(() => {
     if (!editorRef.current) return
     if (viewRef.current) {
@@ -109,6 +186,8 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     }
 
     const docNode = toDocNode(valueMarkdown || '')
+    // Process image URLs after parsing
+    const processedDocNode = processImageNodesInDoc(docNode)
 
     const filteredBaseKeymap = { ...baseKeymap }
     delete filteredBaseKeymap['Mod-z']
@@ -144,7 +223,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     })
 
     const state = EditorState.create({
-      doc: docNode,
+      doc: processedDocNode,
       schema: citationSchema,
       plugins: [
         history(),
@@ -162,6 +241,9 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
       if (!view) return
       const newState = view.state.apply(tr)
       view.updateState(newState)
+
+      setCanUndo(undo(view.state))
+      setCanRedo(redo(view.state))
 
       if (tr.selectionSet && onSelectionChange) {
         const { from, to } = newState.selection
@@ -186,6 +268,9 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     const view = new EditorView(editorRef.current, {
       state,
       dispatchTransaction,
+      nodeViews: {
+        frontmatter: (node, view, getPos) => new FrontmatterNodeView(node, view, getPos as () => number | undefined)
+      },
       editable: () => editable,
       handleClick: (view, pos, event) => {
         const target = event.target as HTMLElement
@@ -240,7 +325,10 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     references,
     onChangeMarkdown,
     onReady,
-    onSelectionChange
+    onSelectionChange,
+    ticketId,
+    processImageNodesInDoc,
+    getApiBaseUrl
   ])
 
   useEffect(() => {
@@ -248,7 +336,8 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     if (valueMarkdown === lastMarkdownRef.current) return
     try {
       const node = toDocNode(valueMarkdown || '')
-      const tr = viewRef.current.state.tr.replaceWith(0, viewRef.current.state.doc.content.size, node.content)
+      const processedNode = processImageNodesInDoc(node)
+      const tr = viewRef.current.state.tr.replaceWith(0, viewRef.current.state.doc.content.size, processedNode.content)
       tr.setMeta('fromExternalMarkdown', true).setMeta('addToHistory', false)
       viewRef.current.dispatch(tr)
       lastMarkdownRef.current = valueMarkdown || ''
@@ -256,7 +345,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
       console.error('Failed to apply external markdown change', error)
       onError?.(error as Error)
     }
-  }, [valueMarkdown, onError])
+  }, [valueMarkdown, onError, ticketId, processImageNodesInDoc, getApiBaseUrl])
 
   const handleAIReplace = useCallback(async () => {
     if (!ai?.runAction || !viewRef.current) return
@@ -320,15 +409,78 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
   }, [imageEditState])
 
   return (
-    <div className="flex gap-3">
-      <div className="flex-1 min-w-0 border rounded-md p-3 space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" variant="outline" onClick={() => handleAIReplace()} disabled={!ai?.runAction}>AI Replace</Button>
-          <Button size="sm" variant="outline" onClick={handleInsertCitation}>Add Citation</Button>
+    <div className="flex flex-col gap-2 h-full">
+      <div className="flex items-center gap-1 flex-wrap border-b pb-2 px-1">
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+            if (viewRef.current) {
+              undo(viewRef.current.state, viewRef.current.dispatch)
+              viewRef.current.focus()
+            }
+          }} disabled={!canUndo}>
+            <Undo className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               redo(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }} disabled={!canRedo}>
+            <Redo className="h-4 w-4" />
+          </Button>
+          <div className="w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               toggleMark(citationSchema.marks.strong)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <Bold className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               toggleMark(citationSchema.marks.em)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <Italic className="h-4 w-4" />
+          </Button>
+          <div className="w-px h-6 bg-border mx-1" />
+           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               wrapInList(citationSchema.nodes.bullet_list)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <List className="h-4 w-4" />
+          </Button>
+           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               wrapInList(citationSchema.nodes.ordered_list)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <ListOrdered className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               wrapIn(citationSchema.nodes.blockquote)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <Quote className="h-4 w-4" />
+          </Button>
+          <div className="w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleAIReplace()} disabled={!ai?.runAction}>
+            <Sparkles className="h-4 w-4 text-purple-500" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={handleInsertCitation}>
+            <BookOpen className="h-4 w-4" />
+          </Button>
           {enableImages && (
             <Button
+              variant="ghost"
               size="sm"
-              variant="outline"
+              className="h-8 w-8 p-0"
               onClick={() => {
                 if (!viewRef.current) return
                 const fileInput = document.createElement('input')
@@ -366,23 +518,26 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
                 fileInput.click()
               }}
             >
-              Insert Image
+              <ImageIcon className="h-4 w-4" />
             </Button>
           )}
         </div>
-        <div ref={editorRef} className="border rounded-md p-3 min-h-[320px] prose-sm prose" />
+      <div className="flex gap-3 h-full overflow-hidden">
+        <div className="flex-1 min-w-0 border rounded-md p-3 space-y-3 overflow-auto flex flex-col">
+           <div ref={editorRef} className="min-h-[320px] prose-sm prose max-w-none flex-1" />
+        </div>
+        {enableChatSidebar && (
+          <aside className="w-80 border rounded-md p-3 space-y-3">
+            {chatSidebar?.header}
+            <div className="flex-1 min-h-[200px] overflow-auto">
+              {chatSidebar?.body || (
+                <p className="text-sm text-muted-foreground">Provide chatSidebar.body to render AI chat.</p>
+              )}
+            </div>
+            {chatSidebar?.footer}
+          </aside>
+        )}
       </div>
-      {enableChatSidebar && (
-        <aside className="w-80 border rounded-md p-3 space-y-3">
-          {chatSidebar?.header}
-          <div className="flex-1 min-h-[200px] overflow-auto">
-            {chatSidebar?.body || (
-              <p className="text-sm text-muted-foreground">Provide chatSidebar.body to render AI chat.</p>
-            )}
-          </div>
-          {chatSidebar?.footer}
-        </aside>
-      )}
       {showImageDialog && imageEditState && (
         <ImageEditDialog
           isOpen={showImageDialog}
@@ -401,6 +556,3 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
 }
 
 export default EmbeddableEditor
-
-
-

@@ -59,6 +59,8 @@ export interface EmbeddableEditorProps {
   }) => void
   onError?: (error: Error) => void
   onSelectionChange?: (range: { start: number; end: number } | null) => void
+  ticketId?: string
+  apiBaseUrl?: string
 }
 
 
