@@ -156,3 +156,5 @@ export function resolveImageUrl(src: string, ticketId?: string, apiBaseUrl?: str
 export function convertProseMirrorToMarkdown(doc: any) {
     return serializer.serialize(doc);
 }
+
+

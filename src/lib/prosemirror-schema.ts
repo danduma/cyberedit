@@ -45,3 +45,5 @@ export const insertCitation = (state: any, dispatch: any, id: string, label: str
         dispatch(state.tr.insertText(`[${label}]`));
     }
 }
+
+
