@@ -12,7 +12,7 @@ import 'prosemirror-image-plugin/dist/styles/common.css'
 import 'prosemirror-image-plugin/dist/styles/sideResize.css'
 import './theme.css'
 
-import { Bold, Italic, List, ListOrdered, Quote, Redo, Undo, Sparkles, Image as ImageIcon, BookOpen } from 'lucide-react'
+import { Bold, Italic, List, ListOrdered, Quote, Redo, Undo, Sparkles, Image as ImageIcon, BookOpen, MoreVertical } from 'lucide-react'
 
 import { citationSchema, insertCitation } from '../lib/prosemirror-schema'
 import { createCitationPlugin } from '../lib/citation-plugin'
@@ -82,6 +82,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
 
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
   
   const { showDiffTransition, clearDiffTransition } = useDiffTransition(() => viewRef.current, { mode: 'simple', duration: 1200 })
 
@@ -331,6 +332,23 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     getApiBaseUrl
   ])
 
+  // Close overflow menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showOverflowMenu) {
+        const target = event.target as Element
+        if (!target.closest('.overflow-menu-container')) {
+          setShowOverflowMenu(false)
+        }
+      }
+    }
+
+    if (showOverflowMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showOverflowMenu])
+
   useEffect(() => {
     if (!viewRef.current) return
     if (valueMarkdown === lastMarkdownRef.current) return
@@ -410,7 +428,10 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
 
   return (
     <div className="flex flex-col gap-2 h-full">
-      <div className="flex items-center gap-1 flex-wrap border-b pb-2 px-1">
+      {/* Toolbar - responsive with overflow menu on mobile */}
+      <div className="border-b pb-2 px-1">
+        {/* Desktop toolbar - all buttons visible */}
+        <div className="hidden md:flex items-center gap-1 flex-wrap">
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
             if (viewRef.current) {
               undo(viewRef.current.state, viewRef.current.dispatch)
@@ -522,6 +543,168 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
             </Button>
           )}
         </div>
+
+        {/* Mobile toolbar - essential buttons only, with overflow menu */}
+        <div className="flex md:hidden items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+            if (viewRef.current) {
+              undo(viewRef.current.state, viewRef.current.dispatch)
+              viewRef.current.focus()
+            }
+          }} disabled={!canUndo}>
+            <Undo className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               redo(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }} disabled={!canRedo}>
+            <Redo className="h-4 w-4" />
+          </Button>
+          <div className="w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               toggleMark(citationSchema.marks.strong)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <Bold className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               toggleMark(citationSchema.marks.em)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <Italic className="h-4 w-4" />
+          </Button>
+          <div className="w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               wrapInList(citationSchema.nodes.bullet_list)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <List className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+             if (viewRef.current) {
+               wrapIn(citationSchema.nodes.blockquote)(viewRef.current.state, viewRef.current.dispatch)
+               viewRef.current.focus()
+             }
+          }}>
+            <Quote className="h-4 w-4" />
+          </Button>
+
+          {/* Overflow menu button */}
+          <div className="relative ml-auto overflow-menu-container">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+
+            {/* Overflow dropdown menu */}
+            {showOverflowMenu && (
+              <div className="absolute top-full right-0 mt-1 bg-background border rounded-md shadow-lg z-50 min-w-[160px] overflow-menu-container">
+                <div className="p-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 px-2"
+                    onClick={() => {
+                      if (viewRef.current) {
+                        wrapInList(citationSchema.nodes.ordered_list)(viewRef.current.state, viewRef.current.dispatch)
+                        viewRef.current.focus()
+                      }
+                      setShowOverflowMenu(false)
+                    }}
+                  >
+                    <ListOrdered className="h-4 w-4 mr-2" />
+                    Ordered List
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 px-2"
+                    onClick={() => {
+                      handleAIReplace()
+                      setShowOverflowMenu(false)
+                    }}
+                    disabled={!ai?.runAction}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2 text-purple-500" />
+                    AI Assist
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 px-2"
+                    onClick={() => {
+                      handleInsertCitation()
+                      setShowOverflowMenu(false)
+                    }}
+                  >
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    Citation
+                  </Button>
+                  {enableImages && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start h-8 px-2"
+                      onClick={() => {
+                        if (!viewRef.current) return
+                        const fileInput = document.createElement('input')
+                        fileInput.type = 'file'
+                        fileInput.accept = 'image/*'
+                        fileInput.onchange = async (event: Event) => {
+                          const file = (event.target as HTMLInputElement).files?.[0]
+                          if (!file) return
+                          let src = ''
+                          try {
+                            if (props.ai?.onOpenSidebar) {
+                              // allow host to open sidebar while uploading if they want
+                              props.ai.onOpenSidebar()
+                            }
+                            if (props.onImageUpload) {
+                              src = await props.onImageUpload(file)
+                            } else {
+                              src = await new Promise<string>((resolve, reject) => {
+                                const reader = new FileReader()
+                                reader.onload = () => resolve(reader.result as string)
+                                reader.onerror = () => reject(reader.error)
+                                reader.readAsDataURL(file)
+                              })
+                            }
+                            const { state, dispatch } = viewRef.current!
+                            const { schema } = state
+                            const imageNode = schema.nodes.image.create({ src, alt: file.name })
+                            const tr = state.tr.replaceSelectionWith(imageNode)
+                            dispatch(tr)
+                          } catch (error) {
+                            console.error('Image upload failed', error)
+                            onError?.(error as Error)
+                          }
+                        }
+                        fileInput.click()
+                        setShowOverflowMenu(false)
+                      }}
+                    >
+                      <ImageIcon className="h-4 w-4 mr-2" />
+                      Image
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
       <div className="flex gap-3 h-full overflow-hidden">
         <div className="flex-1 min-w-0 border rounded-md p-3 space-y-3 overflow-auto flex flex-col">
            <div ref={editorRef} className="min-h-[320px] prose-sm prose max-w-none flex-1" />
