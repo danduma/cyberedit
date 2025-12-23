@@ -65,6 +65,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     ai,
     references,
     chatSidebar,
+    customToolbarButtons,
     onReady,
     onError,
     onSelectionChange,
@@ -427,11 +428,11 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
   }, [imageEditState])
 
   return (
-    <div className="flex flex-col gap-2 h-full">
+    <div className="flex flex-col h-full">
       {/* Toolbar - responsive with overflow menu on mobile */}
-      <div className="border-b pb-2 px-1">
+      <div className="border-b pb-0 px-1">
         {/* Desktop toolbar - all buttons visible */}
-        <div className="hidden md:flex items-center gap-1 flex-wrap">
+        <div className="hidden md:flex items-center gap-1 flex-wrap p-1">
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
             if (viewRef.current) {
               undo(viewRef.current.state, viewRef.current.dispatch)
@@ -542,6 +543,8 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
               <ImageIcon className="h-4 w-4" />
             </Button>
           )}
+          <div className="w-px h-6 bg-border mx-1" />
+          {customToolbarButtons}
         </div>
 
         {/* Mobile toolbar - essential buttons only, with overflow menu */}
@@ -596,6 +599,8 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
           }}>
             <Quote className="h-4 w-4" />
           </Button>
+          <div className="w-px h-6 bg-border mx-1" />
+          {customToolbarButtons}
 
           {/* Overflow menu button */}
           <div className="relative ml-auto overflow-menu-container">
@@ -706,7 +711,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
         </div>
       </div>
       <div className="flex gap-3 h-full overflow-hidden">
-        <div className="flex-1 min-w-0 border rounded-md p-3 space-y-3 overflow-auto flex flex-col">
+        <div className="flex-1 min-w-0 p-0 space-y-3 overflow-auto flex flex-col">
            <div ref={editorRef} className="min-h-[320px] prose-sm prose max-w-none flex-1" />
         </div>
         {enableChatSidebar && (

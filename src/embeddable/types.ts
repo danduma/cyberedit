@@ -52,6 +52,7 @@ export interface EmbeddableEditorProps {
   ai?: EmbeddableAIHooks
   references?: EmbeddableReferenceHooks
   chatSidebar?: EmbeddableChatSidebarProps
+  customToolbarButtons?: ReactNode
   onReady?: (api: {
     applyTextChange: (range: { start: number; end: number }, newText: string) => void
     getDocumentText: () => string
