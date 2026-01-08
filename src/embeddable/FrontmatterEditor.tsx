@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Trash2, Code, Table as TableIcon } from 'lucide-react'
+import { Plus, Trash2, Code, Table as TableIcon, ChevronRight, ChevronDown } from 'lucide-react'
+import { t } from '@/lib/i18n'
 
 interface FrontmatterEditorProps {
   rawYaml: string
@@ -16,6 +18,7 @@ interface KeyValuePair {
 }
 
 export const FrontmatterEditor: React.FC<FrontmatterEditorProps> = ({ rawYaml, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false)
   const [mode, setMode] = useState<'table' | 'raw'>('table')
   const [pairs, setPairs] = useState<KeyValuePair[]>([])
   
@@ -86,86 +89,105 @@ export const FrontmatterEditor: React.FC<FrontmatterEditorProps> = ({ rawYaml, o
       onChange(serializePairs(newPairs))
   }
 
-  if (mode === 'raw') {
-      return (
-          <div className="border rounded-md p-2 bg-muted/30 my-2">
-              <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Metadata (YAML)</span>
-                  <Button variant="ghost" size="sm" onClick={() => setMode('table')}>
-                      <TableIcon className="h-4 w-4 mr-1" /> Table View
-                  </Button>
-              </div>
-              <textarea 
-                  className="w-full min-h-[100px] p-2 text-sm font-mono border rounded bg-background"
-                  value={rawYaml}
-                  onChange={(e) => onChange(e.target.value)}
-              />
-          </div>
-      )
-  }
-
   return (
-    <div className="border rounded-md p-2 bg-muted/30 my-2 select-none">
-        <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Metadata</span>
-            <div className="flex gap-1">
-                <Button variant="ghost" size="sm" onClick={() => setMode('raw')}>
-                    <Code className="h-4 w-4 mr-1" /> Raw YAML
+    <div className="my-2">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <div className="flex items-center justify-between rounded-md border bg-muted/30 px-2 py-1.5">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
+            >
+              {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              <span className="truncate">{t('cyberedit.frontmatter.metadata', {}, 'METADATA')}</span>
+            </button>
+          </CollapsibleTrigger>
+          {isOpen ? (
+            <div className="flex items-center gap-1">
+              {mode === 'raw' ? (
+                <Button variant="ghost" size="sm" onClick={() => setMode('table')} className="h-7 px-2 text-xs">
+                  <TableIcon className="h-3.5 w-3.5 mr-1" /> Table View
                 </Button>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={() => setMode('raw')} className="h-7 px-2 text-xs">
+                  <Code className="h-3.5 w-3.5 mr-1" /> Raw YAML
+                </Button>
+              )}
             </div>
+          ) : null}
         </div>
-        <div className="bg-background rounded-md border overflow-hidden">
-            <Table>
-                <TableHeader>
+
+        <CollapsibleContent className="mt-2">
+          {mode === 'raw' ? (
+            <div className="rounded-md border bg-muted/30 p-2">
+              <textarea
+                className="w-full min-h-[100px] p-2 text-sm font-mono border rounded bg-background"
+                value={rawYaml}
+                onChange={(e) => onChange(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div className="rounded-md border bg-muted/30 p-2">
+              <div className="bg-background rounded-md border overflow-hidden">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                        <TableHead className="w-[200px]">Key</TableHead>
-                        <TableHead>Value</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="w-[200px]">Key</TableHead>
+                      <TableHead>Value</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
-                </TableHeader>
-                <TableBody>
+                  </TableHeader>
+                  <TableBody>
                     {pairs.map((pair, index) => (
-                        <TableRow key={pair.id}>
-                            <TableCell className="p-2">
-                                <Input 
-                                    value={pair.key} 
-                                    onChange={(e) => handlePairChange(index, 'key', e.target.value)}
-                                    className="h-8"
-                                    placeholder="Key"
-                                />
-                            </TableCell>
-                            <TableCell className="p-2">
-                                <Input 
-                                    value={pair.value} 
-                                    onChange={(e) => handlePairChange(index, 'value', e.target.value)}
-                                    className="h-8"
-                                    placeholder="Value"
-                                />
-                            </TableCell>
-                            <TableCell className="p-2">
-                                <Button variant="ghost" size="sm" onClick={() => removePair(index)} className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive">
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                            </TableCell>
-                        </TableRow>
+                      <TableRow key={pair.id}>
+                        <TableCell className="p-2">
+                          <Input
+                            value={pair.key}
+                            onChange={(e) => handlePairChange(index, 'key', e.target.value)}
+                            className="h-8"
+                            placeholder="Key"
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            value={pair.value}
+                            onChange={(e) => handlePairChange(index, 'value', e.target.value)}
+                            className="h-8"
+                            placeholder="Value"
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removePair(index)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     ))}
                     {pairs.length === 0 && (
-                        <TableRow>
-                            <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
-                                No metadata properties
-                            </TableCell>
-                        </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
+                          No metadata properties
+                        </TableCell>
+                      </TableRow>
                     )}
-                </TableBody>
-            </Table>
-            <div className="p-2 bg-muted/10 border-t">
-                <Button variant="outline" size="sm" onClick={addPair} className="w-full">
+                  </TableBody>
+                </Table>
+                <div className="p-2 bg-muted/10 border-t">
+                  <Button variant="outline" size="sm" onClick={addPair} className="w-full">
                     <Plus className="h-4 w-4 mr-2" /> Add Property
-                </Button>
+                  </Button>
+                </div>
+              </div>
             </div>
-        </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }
-
 
