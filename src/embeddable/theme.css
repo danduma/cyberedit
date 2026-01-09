@@ -104,26 +104,63 @@
   display: block;
 }
 
-/* Fix for imagePluginRoot empty space */
-.imagePluginRoot {
-  display: inline-flex !important;
-  vertical-align: bottom;
+/* Tables */
+.ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.95em;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+}
+
+.ProseMirror th {
+  background: var(--muted);
+  font-weight: 600;
+}
+
+.ProseMirror tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+/* prosemirror-image-plugin */
+.ProseMirror img.imagePluginImg {
+  margin: 0;
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ProseMirror .imagePluginRoot {
+  display: inline-flex;
+  flex-direction: column;
+  position: relative;
   margin: 1.5rem 0;
   line-height: 0;
   max-width: 100%;
 }
 
-.imageResizeBoxWrapper {
-  display: none !important;
+.ProseMirror .imagePluginOverlay {
+  opacity: 0;
+  pointer-events: none;
 }
 
-.imageResizeCorner {
-  display: none !important;
+.ProseMirror .imageResizeBox {
+  box-shadow: 0 0 0 1px var(--border);
+  border-radius: 0.5rem;
 }
 
-.imagePluginRoot img {
-  margin: 0;
-  max-width: min(100%, 500px);
+.ProseMirror .imageResizeBoxControl::after {
+  background-color: var(--primary);
+  border: 1px solid var(--background);
+  border-radius: 999px;
+  height: 10px;
+  width: 10px;
 }
 
 /* Horizontal Rule */
@@ -143,5 +180,3 @@
 .ProseMirror a:hover {
   text-decoration-thickness: 2px;
 }
-
-

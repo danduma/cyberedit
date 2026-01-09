@@ -7,9 +7,9 @@ import { keymap } from 'prosemirror-keymap'
 import { baseKeymap, toggleMark, setBlockType, wrapIn } from 'prosemirror-commands'
 import { history, undo, redo } from 'prosemirror-history'
 import { splitListItem, liftListItem, sinkListItem, wrapInList } from 'prosemirror-schema-list'
-import { imagePlugin, defaultSettings as imageDefaultSettings } from 'prosemirror-image-plugin'
+import { imagePlugin, defaultSettings as imageDefaultSettings, startImageUpload } from 'prosemirror-image-plugin'
 import 'prosemirror-image-plugin/dist/styles/common.css'
-import 'prosemirror-image-plugin/dist/styles/sideResize.css'
+import 'prosemirror-image-plugin/dist/styles/withResize.css'
 import './theme.css'
 
 import { Bold, Italic, List, ListOrdered, Quote, Redo, Undo, Sparkles, Image as ImageIcon, BookOpen, MoreVertical } from 'lucide-react'
@@ -86,6 +86,26 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
   
   const { showDiffTransition, clearDiffTransition } = useDiffTransition(() => viewRef.current, { mode: 'simple', duration: 1200 })
+
+  const imagePluginSettings = useMemo(() => {
+    return {
+      ...imageDefaultSettings,
+      hasTitle: false,
+      isBlock: false,
+      createOverlay: () => undefined,
+      uploadFile: async (file: File) => {
+        if (props.onImageUpload) {
+          return await props.onImageUpload(file)
+        }
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = () => reject(reader.error)
+          reader.readAsDataURL(file)
+        })
+      }
+    }
+  }, [props.onImageUpload])
 
   useEffect(() => {
     highlightsRef.current = highlights
@@ -234,7 +254,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
         createHighlightPlugin(() => highlightsRef.current || []),
         createCitationPlugin(documentId, { documentId, style: 'apa', inlineFormat: 'numbered' } as any),
         enableDiffs ? diffHighlightPlugin : null,
-        enableImages ? imagePlugin({ ...imageDefaultSettings }) : null
+        enableImages ? imagePlugin(imagePluginSettings) : null
       ].filter(Boolean) as Plugin[]
     })
 
@@ -283,15 +303,31 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
             return true
           }
         }
-        if (target.tagName === 'IMG') {
-          const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
-          if (coords) {
-            const node = view.state.doc.nodeAt(coords.pos)
-            if (node && node.type.name === 'image') {
-              setImageEditState({ pos: coords.pos, attrs: node.attrs })
-              setShowImageDialog(true)
-              return true
+        if (target.closest?.('.imageResizeBoxControl, .imageResizeBox, .imageResizeBoxWrapper')) {
+          return false
+        }
+        const imageEl =
+          target.tagName === 'IMG'
+            ? (target as HTMLImageElement)
+            : (target.closest?.('img') as HTMLImageElement | null)
+        if (imageEl) {
+          const clickPos = view.posAtDOM(imageEl, 0)
+          let node = view.state.doc.nodeAt(clickPos)
+          let imagePos = clickPos
+          if (!node || node.type.name !== 'image') {
+            const $pos = view.state.doc.resolve(clickPos)
+            if ($pos.nodeAfter?.type.name === 'image') {
+              node = $pos.nodeAfter
+              imagePos = clickPos
+            } else if ($pos.nodeBefore?.type.name === 'image') {
+              node = $pos.nodeBefore
+              imagePos = clickPos - $pos.nodeBefore.nodeSize
             }
+          }
+          if (node && node.type.name === 'image') {
+            setImageEditState({ pos: imagePos, attrs: node.attrs })
+            setShowImageDialog(true)
+            return true
           }
         }
         return false
@@ -320,6 +356,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     editable,
     enableDiffs,
     enableImages,
+    imagePluginSettings,
     applyTextChange,
     getDocumentText,
     showDiffTransition,
@@ -511,27 +548,12 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
                 fileInput.onchange = async (event: Event) => {
                   const file = (event.target as HTMLInputElement).files?.[0]
                   if (!file) return
-                  let src = ''
                   try {
                     if (props.ai?.onOpenSidebar) {
                       // allow host to open sidebar while uploading if they want
                       props.ai.onOpenSidebar()
                     }
-                    if (props.onImageUpload) {
-                      src = await props.onImageUpload(file)
-                    } else {
-                      src = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader()
-                        reader.onload = () => resolve(reader.result as string)
-                        reader.onerror = () => reject(reader.error)
-                        reader.readAsDataURL(file)
-                      })
-                    }
-                    const { state, dispatch } = viewRef.current!
-                    const { schema } = state
-                    const imageNode = schema.nodes.image.create({ src, alt: file.name })
-                    const tr = state.tr.replaceSelectionWith(imageNode)
-                    dispatch(tr)
+                    startImageUpload(viewRef.current!, file, file.name, imagePluginSettings, viewRef.current!.state.schema)
                   } catch (error) {
                     console.error('Image upload failed', error)
                     onError?.(error as Error)
@@ -670,27 +692,12 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
                         fileInput.onchange = async (event: Event) => {
                           const file = (event.target as HTMLInputElement).files?.[0]
                           if (!file) return
-                          let src = ''
                           try {
                             if (props.ai?.onOpenSidebar) {
                               // allow host to open sidebar while uploading if they want
                               props.ai.onOpenSidebar()
                             }
-                            if (props.onImageUpload) {
-                              src = await props.onImageUpload(file)
-                            } else {
-                              src = await new Promise<string>((resolve, reject) => {
-                                const reader = new FileReader()
-                                reader.onload = () => resolve(reader.result as string)
-                                reader.onerror = () => reject(reader.error)
-                                reader.readAsDataURL(file)
-                              })
-                            }
-                            const { state, dispatch } = viewRef.current!
-                            const { schema } = state
-                            const imageNode = schema.nodes.image.create({ src, alt: file.name })
-                            const tr = state.tr.replaceSelectionWith(imageNode)
-                            dispatch(tr)
+                            startImageUpload(viewRef.current!, file, file.name, imagePluginSettings, viewRef.current!.state.schema)
                           } catch (error) {
                             console.error('Image upload failed', error)
                             onError?.(error as Error)
@@ -710,7 +717,7 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
           </div>
         </div>
       </div>
-      <div className="flex gap-3 h-full overflow-hidden">
+      <div className="flex gap-3 flex-1 min-h-0 overflow-hidden">
         <div className="flex-1 min-w-0 p-0 space-y-3 overflow-auto flex flex-col">
            <div ref={editorRef} className="min-h-[320px] prose-sm prose max-w-none flex-1" />
         </div>
