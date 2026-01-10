@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
 import { EditorState, Plugin, Transaction } from 'prosemirror-state'
 import { Transform } from 'prosemirror-transform'
-import { EditorView } from 'prosemirror-view'
+import { EditorView, Decoration, DecorationSet } from 'prosemirror-view'
 import { keymap } from 'prosemirror-keymap'
 import { baseKeymap, toggleMark, setBlockType, wrapIn } from 'prosemirror-commands'
 import { history, undo, redo } from 'prosemirror-history'
@@ -45,8 +45,7 @@ function toDocNode(markdown: string) {
 
 function toMarkdown(doc: any) {
   try {
-    const json = typeof doc?.toJSON === 'function' ? doc.toJSON() : doc
-    return convertProseMirrorToMarkdown(json)
+    return convertProseMirrorToMarkdown(doc)
   } catch (error) {
     console.error('Failed to serialize markdown', error)
     return ''
@@ -76,7 +75,15 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
   const highlightsRef = useRef(highlights)
+  const onChangeMarkdownRef = useRef(onChangeMarkdown)
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  const onReadyRef = useRef(onReady)
+  const onErrorRef = useRef(onError)
+  const referencesRef = useRef(references)
   const lastMarkdownRef = useRef<string>(valueMarkdown || '')
+  const pendingSerializeTimerRef = useRef<number | null>(null)
+  const pendingSerializeIdleRef = useRef<number | null>(null)
+  const serializeScheduledRef = useRef(false)
   const [showImageDialog, setShowImageDialog] = useState(false)
   const [imageEditState, setImageEditState] = useState<{ pos: number; attrs: any } | null>(null)
   const documentId = useMemo(() => props.documentId || `embeddable-${Date.now()}`, [props.documentId])
@@ -106,6 +113,26 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
       }
     }
   }, [props.onImageUpload])
+
+  useEffect(() => {
+    onChangeMarkdownRef.current = onChangeMarkdown
+  }, [onChangeMarkdown])
+
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange
+  }, [onSelectionChange])
+
+  useEffect(() => {
+    onReadyRef.current = onReady
+  }, [onReady])
+
+  useEffect(() => {
+    onErrorRef.current = onError
+  }, [onError])
+
+  useEffect(() => {
+    referencesRef.current = references
+  }, [references])
 
   useEffect(() => {
     highlightsRef.current = highlights
@@ -235,7 +262,6 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
         decorations(state) {
           const meta = this.getState(state)
           if (!meta || !meta.start) return null
-          const { Decoration, DecorationSet } = require('prosemirror-view') as typeof import('prosemirror-view')
           const s = Math.max(1, Math.min(meta.start, state.doc.content.size - 1))
           const e = Math.max(s + 1, Math.min(meta.end, state.doc.content.size))
           const dec = Decoration.inline(s, e, { class: 'ca-highlight' }, { inclusiveStart: false, inclusiveEnd: false })
@@ -258,6 +284,29 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
       ].filter(Boolean) as Plugin[]
     })
 
+    const scheduleMarkdownSerialization = () => {
+      if (serializeScheduledRef.current) return
+      serializeScheduledRef.current = true
+
+      const run = () => {
+        serializeScheduledRef.current = false
+        const view = viewRef.current
+        if (!view) return
+        const changeHandler = onChangeMarkdownRef.current
+        if (!changeHandler) return
+        const md = toMarkdown(view.state.doc)
+        lastMarkdownRef.current = md
+        changeHandler(md, { docJSON: view.state.doc.toJSON() })
+      }
+
+      // Prefer idle time serialization to avoid blocking UI on large docs
+      if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
+        pendingSerializeIdleRef.current = (window as any).requestIdleCallback(run, { timeout: 250 })
+      } else {
+        pendingSerializeTimerRef.current = window.setTimeout(run, 0)
+      }
+    }
+
     const dispatchTransaction = (tr: any) => {
       const view = viewRef.current
       if (!view) return
@@ -267,19 +316,22 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
       setCanUndo(undo(view.state))
       setCanRedo(redo(view.state))
 
-      if (tr.selectionSet && onSelectionChange) {
+      const selectionHandler = onSelectionChangeRef.current
+      if (tr.selectionSet && selectionHandler) {
         const { from, to } = newState.selection
         if (from === to) {
-          onSelectionChange(null)
+          selectionHandler(null)
         } else {
-          onSelectionChange({ start: from, end: to })
+          selectionHandler({ start: from, end: to })
         }
       }
 
-      if (tr.docChanged && onChangeMarkdown) {
-        const md = toMarkdown(newState.doc)
-        lastMarkdownRef.current = md
-        onChangeMarkdown(md, { docJSON: newState.doc.toJSON() })
+      const changeHandler = onChangeMarkdownRef.current
+      if (tr.docChanged && changeHandler) {
+        // Avoid feedback loops: external markdown updates should not immediately re-emit markdown
+        if (!tr.getMeta('fromExternalMarkdown')) {
+          scheduleMarkdownSerialization()
+        }
       }
 
       if (tr.getMeta('clearDiffHighlight') && enableDiffs) {
@@ -298,8 +350,9 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
         const target = event.target as HTMLElement
         if (target.classList.contains('citation')) {
           const referenceId = target.getAttribute('data-reference-id')
-          if (referenceId && references?.onCitationClick) {
-            references.onCitationClick(referenceId)
+          const refHandlers = referencesRef.current
+          if (referenceId && refHandlers?.onCitationClick) {
+            refHandlers.onCitationClick(referenceId)
             return true
           }
         }
@@ -335,9 +388,11 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     })
 
     viewRef.current = view
-    lastMarkdownRef.current = valueMarkdown || toMarkdown(docNode)
+    // Avoid init-time round-trip serialization (can be expensive on large documents).
+    // Treat the provided markdown value as the source of truth.
+    lastMarkdownRef.current = valueMarkdown || ''
 
-    onReady?.({
+    onReadyRef.current?.({
       applyTextChange,
       getDocumentText,
       showDiff: ({ oldText, newText, range }) => {
@@ -347,11 +402,20 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     })
 
     return () => {
+      // cancel any pending serialization work
+      if (pendingSerializeIdleRef.current !== null && typeof window !== 'undefined' && typeof (window as any).cancelIdleCallback === 'function') {
+        ;(window as any).cancelIdleCallback(pendingSerializeIdleRef.current)
+      }
+      pendingSerializeIdleRef.current = null
+      if (pendingSerializeTimerRef.current !== null) {
+        window.clearTimeout(pendingSerializeTimerRef.current)
+      }
+      pendingSerializeTimerRef.current = null
+      serializeScheduledRef.current = false
       view.destroy()
       viewRef.current = null
     }
   }, [
-    valueMarkdown,
     documentId,
     editable,
     enableDiffs,
@@ -361,10 +425,6 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     getDocumentText,
     showDiffTransition,
     clearDiffTransition,
-    references,
-    onChangeMarkdown,
-    onReady,
-    onSelectionChange,
     ticketId,
     processImageNodesInDoc,
     getApiBaseUrl
@@ -389,19 +449,28 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
 
   useEffect(() => {
     if (!viewRef.current) return
-    if (valueMarkdown === lastMarkdownRef.current) return
+    const newValue = valueMarkdown || ''
+    if (newValue === lastMarkdownRef.current) return
+    
     try {
-      const node = toDocNode(valueMarkdown || '')
+      // Update the ref immediately to prevent infinite loops from synchronous re-renders
+      // logic: if we are processing this update, we consider it "handled" even if we bail out later
+      lastMarkdownRef.current = newValue
+      
+      const node = toDocNode(newValue)
       const processedNode = processImageNodesInDoc(node)
-      const tr = viewRef.current.state.tr.replaceWith(0, viewRef.current.state.doc.content.size, processedNode.content)
-      tr.setMeta('fromExternalMarkdown', true).setMeta('addToHistory', false)
-      viewRef.current.dispatch(tr)
-      lastMarkdownRef.current = valueMarkdown || ''
+      
+      // Check for structural equality to avoid unnecessary updates and loops
+      if (!processedNode.eq(viewRef.current.state.doc)) {
+        const tr = viewRef.current.state.tr.replaceWith(0, viewRef.current.state.doc.content.size, processedNode.content)
+        tr.setMeta('fromExternalMarkdown', true).setMeta('addToHistory', false)
+        viewRef.current.dispatch(tr)
+      }
     } catch (error) {
       console.error('Failed to apply external markdown change', error)
-      onError?.(error as Error)
+      onErrorRef.current?.(error as Error)
     }
-  }, [valueMarkdown, onError, ticketId, processImageNodesInDoc, getApiBaseUrl])
+  }, [valueMarkdown, ticketId, processImageNodesInDoc, getApiBaseUrl])
 
   const handleAIReplace = useCallback(async () => {
     if (!ai?.runAction || !viewRef.current) return

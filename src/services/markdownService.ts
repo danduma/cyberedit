@@ -60,8 +60,10 @@ function convertFootnotesToLists(markdown: string): string {
     return output.join("\n");
 }
 
-// Preprocess markdown to convert HTML img tags to markdown image syntax
+// Preprocess markdown to convert HTML img tags to markdown image syntax and handle HTML elements
 function preprocessMarkdown(markdown: string): string {
+    if (!markdown) return "";
+
     // Convert HTML img tags to markdown image syntax
     // First handle img tags with alt attribute (more specific match)
     const htmlImgWithAltRegex = /<img[^>]*alt\s*=\s*["']([^"']*)["'][^>]*src\s*=\s*["']([^"']*)["'][^>]*>/gi;
@@ -84,6 +86,20 @@ function preprocessMarkdown(markdown: string): string {
     processed = processed.replace(htmlImgNoAltRegex, (match, src) => {
         return `![](${src})`;
     });
+
+    // Convert HTML div elements (like evidence badges) to markdown
+    // Use a safer non-greedy match that doesn't cross other tags
+    processed = processed.replace(/<div\s+class="([^"]*evidence-badge[^"]*)"[^>]*>([\s\S]*?)<\/div>/gi, (match, className, content) => {
+        // Extract color from class name and convert to readable format
+        const colorMatch = className.match(/(green|yellow|red|blue)/i);
+        const color = colorMatch ? colorMatch[1].toLowerCase() : '';
+        const colorEmoji = { green: '🟢', yellow: '🟡', red: '🔴', blue: '🔵' }[color] || '📍';
+        return `${colorEmoji} **${content.trim()}**`;
+    });
+
+    // Strip remaining HTML tags but preserve their content safely
+    // This regex is fast and doesn't backtrack
+    processed = processed.replace(/<[^>]+>/g, '');
 
     processed = convertFootnotesToLists(processed);
 
@@ -126,8 +142,7 @@ const tokens = {
             align: getTokenTextAlign(token)
         })
     },
-    // Ignore HTML blocks and inline HTML - they're not supported in the schema
-    // Users should use markdown syntax instead
+    // Ignore HTML blocks and inline HTML - they're already handled in preprocessMarkdown
     html_block: { ignore: true },
     html_inline: { ignore: true }
 };
@@ -273,10 +288,32 @@ export function parseMarkdownToProseMirror(markdown: string) {
     } catch (error) {
         console.error('Error parsing markdown:', error);
         console.error('Markdown content:', markdown.substring(0, 500));
-        // Return a minimal valid document
+
+        // Try to create a fallback document that preserves content
+        try {
+            // Split the original markdown and create paragraphs for each line/block
+            const lines = markdown.split('\n').filter(line => line.trim());
+            const fallbackNodes = lines.map(line => {
+                // Strip HTML tags and create text nodes
+                const cleanLine = line.replace(/<[^>]*>/g, '').trim();
+                if (cleanLine) {
+                    return citationSchema.node('paragraph', null, [citationSchema.text(cleanLine)]);
+                }
+                return null;
+            }).filter(Boolean);
+
+            if (fallbackNodes.length > 0) {
+                console.warn('Using fallback markdown parsing to preserve content');
+                return citationSchema.node('doc', null, fallbackNodes);
+            }
+        } catch (fallbackError) {
+            console.error('Fallback parsing also failed:', fallbackError);
+        }
+
+        // Last resort: return a minimal valid document
         return citationSchema.node('doc', null, [
             citationSchema.node('paragraph', null, [
-                citationSchema.text('Error parsing document. Please check the markdown syntax.')
+                citationSchema.text('Unable to parse document. Content may contain unsupported formatting.')
             ])
         ]);
     }
@@ -328,5 +365,12 @@ export function resolveImageUrl(src: string, ticketId?: string, apiBaseUrl?: str
 }
 
 export function convertProseMirrorToMarkdown(doc: any) {
-    return serializer.serialize(doc);
+    if (!doc) return "";
+    
+    // If it's a JSON object (as passed by some parts of the editor), convert it back to a Node
+    const node = (doc.type && typeof doc.type.name === 'string') 
+        ? doc 
+        : citationSchema.nodeFromJSON(doc);
+        
+    return serializer.serialize(node);
 }
