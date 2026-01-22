@@ -12,7 +12,7 @@ import 'prosemirror-image-plugin/dist/styles/common.css'
 import 'prosemirror-image-plugin/dist/styles/withResize.css'
 import './theme.css'
 
-import { Bold, Italic, List, ListOrdered, Quote, Redo, Undo, Sparkles, Image as ImageIcon, BookOpen, MoreVertical } from 'lucide-react'
+import { Bold, Italic, List, ListOrdered, Quote, Redo, Undo, Sparkles, Image as ImageIcon, BookOpen, MoreVertical, Tag } from 'lucide-react'
 
 import { citationSchema, insertCitation } from '../lib/prosemirror-schema'
 import { createCitationPlugin } from '../lib/citation-plugin'
@@ -24,6 +24,7 @@ import { createHighlightPlugin, embeddableHighlightPluginKey } from './highlight
 import { FrontmatterNodeView } from './FrontmatterNodeView'
 import type { EmbeddableEditorProps } from './types'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import ImageEditDialog from '../components/ImageEditDialog'
 
 function toDocNode(markdown: string) {
@@ -91,6 +92,8 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const [showTagEditor, setShowTagEditor] = useState(false)
+  const [tagInput, setTagInput] = useState('')
   
   const { showDiffTransition, clearDiffTransition } = useDiffTransition(() => viewRef.current, { mode: 'simple', duration: 1200 })
 
@@ -270,6 +273,23 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
       }
     })
 
+    const tagDecorationPlugin = new Plugin({
+      props: {
+        decorations(state) {
+          const decos: Decoration[] = []
+          state.doc.descendants((node, pos) => {
+            if (node.attrs.class) {
+              decos.push(Decoration.node(pos, pos + node.nodeSize, {
+                class: 'has-tags',
+                'data-tags': node.attrs.class
+              }))
+            }
+          })
+          return DecorationSet.create(state.doc, decos)
+        }
+      }
+    })
+
     const state = EditorState.create({
       doc: processedDocNode,
       schema: citationSchema,
@@ -280,7 +300,8 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
         createHighlightPlugin(() => highlightsRef.current || []),
         createCitationPlugin(documentId, { documentId, style: 'apa', inlineFormat: 'numbered' } as any),
         enableDiffs ? diffHighlightPlugin : null,
-        enableImages ? imagePlugin(imagePluginSettings) : null
+        enableImages ? imagePlugin(imagePluginSettings) : null,
+        tagDecorationPlugin
       ].filter(Boolean) as Plugin[]
     })
 
@@ -513,6 +534,50 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
     references?.onCreateReference?.()
   }, [documentId, references])
 
+  const handleTagClick = useCallback(() => {
+    if (!viewRef.current) return
+    const { state } = viewRef.current
+    const { from, to, $from } = state.selection
+    
+    let currentClass = ''
+    const span = citationSchema.marks.span
+    const mark = state.doc.rangeHasMark(from, to, span) ? span.isInSet(state.storedMarks || $from.marks()) : null
+    if (mark) {
+      currentClass = mark.attrs.class || ''
+    } else {
+      const node = $from.node()
+      currentClass = node.attrs.class || ''
+    }
+    
+    setTagInput(currentClass)
+    setShowTagEditor(true)
+  }, [])
+
+  const applyTags = useCallback((tags: string) => {
+    if (!viewRef.current) return
+    const { state, dispatch } = viewRef.current
+    const { from, to, $from } = state.selection
+    const tr = state.tr
+    
+    const cleanTags = tags.trim() || null
+    
+    if (from !== to) {
+      if (cleanTags) {
+        tr.addMark(from, to, citationSchema.marks.span.create({ class: cleanTags }))
+      } else {
+        tr.removeMark(from, to, citationSchema.marks.span)
+      }
+    } else {
+      const pos = $from.before($from.depth)
+      const node = $from.node()
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, class: cleanTags })
+    }
+    
+    dispatch(tr)
+    setShowTagEditor(false)
+    viewRef.current.focus()
+  }, [])
+
   const handleImageSave = useCallback((attrs: any) => {
     if (!viewRef.current || !imageEditState) return
     const { state, dispatch } = viewRef.current
@@ -603,6 +668,9 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
           </Button>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={handleInsertCitation}>
             <BookOpen className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={handleTagClick} title="Edit CSS Classes/Tags">
+            <Tag className="h-4 w-4" />
           </Button>
           {enableImages && (
             <Button
@@ -748,6 +816,18 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
                     <BookOpen className="h-4 w-4 mr-2" />
                     Citation
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 px-2"
+                    onClick={() => {
+                      handleTagClick()
+                      setShowOverflowMenu(false)
+                    }}
+                  >
+                    <Tag className="h-4 w-4 mr-2" />
+                    Tags / Classes
+                  </Button>
                   {enableImages && (
                     <Button
                       variant="ghost"
@@ -814,6 +894,25 @@ export function EmbeddableEditor(props: EmbeddableEditorProps) {
           onSave={(settings) => handleImageSave(settings)}
           onRemove={handleImageRemove}
         />
+      )}
+      
+      {showTagEditor && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-50 bg-background border rounded-lg shadow-xl p-3 flex items-center gap-2 min-w-[300px] animate-in fade-in zoom-in duration-200">
+          <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Input 
+            autoFocus
+            placeholder="Classes (e.g. callout-info fold)" 
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') applyTags(tagInput)
+              if (e.key === 'Escape') setShowTagEditor(false)
+            }}
+            className="h-8 text-xs"
+          />
+          <Button size="sm" className="h-8 px-3 text-xs" onClick={() => applyTags(tagInput)}>Apply</Button>
+          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setShowTagEditor(false)}>Cancel</Button>
+        </div>
       )}
     </div>
   )

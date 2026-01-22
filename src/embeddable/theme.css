@@ -180,3 +180,199 @@
 .ProseMirror a:hover {
   text-decoration-thickness: 2px;
 }
+
+/* Specialized Markdown Tag Visualizations */
+
+/* Infobox Styles */
+.ProseMirror .infobox {
+  border: 1px solid var(--border);
+  padding: 1rem;
+  background: var(--card);
+  border-radius: 0.75rem;
+  margin: 1.5rem 0;
+  position: relative;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.ProseMirror .infobox::before {
+  content: "INFOBOX";
+  position: absolute;
+  top: -0.6rem;
+  right: 1rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.1rem 0.5rem;
+  border-radius: 1rem;
+  letter-spacing: 0.05em;
+}
+
+.ProseMirror .infobox-right {
+  float: right;
+  width: 320px;
+  margin-left: 2rem;
+  margin-top: 0;
+}
+
+/* FAQ Styles */
+.ProseMirror h2.faq-section, 
+.ProseMirror h3.faq-section {
+  border-left: 4px solid var(--primary);
+  padding-left: 1rem;
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.ProseMirror .faq-item {
+  color: var(--primary);
+  font-weight: 700;
+  margin-top: 1.5rem !important;
+}
+
+.ProseMirror .faq-item::before {
+  content: "Q: ";
+  opacity: 0.5;
+}
+
+/* Fold Sections */
+.ProseMirror .fold {
+  cursor: pointer;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.ProseMirror .fold::before {
+  content: "";
+  position: absolute;
+  left: 0.25rem;
+  top: 0.6em;
+  width: 0;
+  height: 0;
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  opacity: 0.5;
+}
+
+/* Callouts / Alert Boxes */
+.ProseMirror .callout {
+  border-left: 4px solid var(--border);
+  background: var(--muted);
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.5rem;
+  font-style: normal;
+}
+
+.ProseMirror .callout-danger {
+  border-left-color: #ef4444;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.ProseMirror .callout-warning {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.ProseMirror .callout-info {
+  border-left-color: #3b82f6;
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.ProseMirror .callout-success {
+  border-left-color: #10b981;
+  background: #f0fdf4;
+  color: #065f46;
+}
+
+/* Evidence Tables */
+.ProseMirror table.evidence-table {
+  border: 2px solid var(--primary);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.ProseMirror table.evidence-table th {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Quick Facts */
+.ProseMirror .quick-facts {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.ProseMirror .quick-facts::before {
+  content: "QUICK FACTS";
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+/* Table Cell Effect Styles */
+.ProseMirror td[class*="effect-pos-"],
+.ProseMirror th[class*="effect-pos-"] { 
+  background: #f0fdf4 !important;
+  color: #16a34a; 
+  font-weight: 600; 
+}
+
+.ProseMirror td[class*="effect-neg-"],
+.ProseMirror th[class*="effect-neg-"] { 
+  background: #fef2f2 !important;
+  color: #dc2626; 
+  font-weight: 600; 
+}
+
+.ProseMirror td[class="effect-neutral"],
+.ProseMirror th[class="effect-neutral"] { 
+  background: #f8fafc !important;
+  color: #4b5563; 
+}
+
+/* Biomarker Tags */
+.ProseMirror .tag-biomarker {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 0.1em 0.3em;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+/* Tag Indicators in Editor */
+.ProseMirror .has-tags {
+  position: relative;
+  outline: 1px dashed var(--primary);
+  outline-offset: 2px;
+}
+
+.ProseMirror .has-tags::after {
+  content: attr(data-tags);
+  position: absolute;
+  top: -1.2rem;
+  right: 0;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.65rem;
+  padding: 0 0.4rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, monospace;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  opacity: 0.6;
+}
+
+.ProseMirror .has-tags:hover::after {
+  opacity: 1;
+}

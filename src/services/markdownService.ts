@@ -1,5 +1,7 @@
 import { defaultMarkdownParser, defaultMarkdownSerializer, MarkdownParser, MarkdownSerializer, MarkdownSerializerState } from "prosemirror-markdown";
 import MarkdownIt from "markdown-it";
+// @ts-ignore
+import markdownItAttrs from "markdown-it-attrs";
 import { citationSchema } from "../lib/prosemirror-schema";
 
 function convertFootnotesToLists(markdown: string): string {
@@ -106,20 +108,46 @@ function preprocessMarkdown(markdown: string): string {
     return processed;
 }
 
+// Helper to safely get attributes from a token
+const safeGetClass = (token: any) => {
+    try {
+        return token && typeof token.attrGet === 'function' ? token.attrGet("class") : null;
+    } catch (e) {
+        return null;
+    }
+};
+
 const tokens = {
     ...defaultMarkdownParser.tokens,
+    paragraph: {
+        block: "paragraph",
+        getAttrs: (token: any) => ({ class: safeGetClass(token) })
+    },
+    blockquote: {
+        block: "blockquote",
+        getAttrs: (token: any) => ({ class: safeGetClass(token) })
+    },
+    heading: {
+        block: "heading",
+        getAttrs: (token: any) => ({ 
+            level: +token.tag.slice(1),
+            class: safeGetClass(token)
+        })
+    },
     image: {
         node: "image",
         getAttrs: (token: any) => {
             return {
-                src: token.attrGet("src"),
+                src: token.attrGet ? token.attrGet("src") : null,
                 alt: token.content,
-                title: token.attrGet("title") || null
+                title: token.attrGet ? (token.attrGet("title") || null) : null,
+                class: safeGetClass(token)
             }
         }
     },
     table: {
-        block: "table"
+        block: "table",
+        getAttrs: (token: any) => ({ class: safeGetClass(token) })
     },
     thead: {
         block: "table_head"
@@ -133,14 +161,20 @@ const tokens = {
     th: {
         block: "table_header",
         getAttrs: (token: any) => ({
-            align: getTokenTextAlign(token)
+            align: getTokenTextAlign(token),
+            class: safeGetClass(token)
         })
     },
     td: {
         block: "table_cell",
         getAttrs: (token: any) => ({
-            align: getTokenTextAlign(token)
+            align: getTokenTextAlign(token),
+            class: safeGetClass(token)
         })
+    },
+    span: {
+        mark: "span",
+        getAttrs: (token: any) => ({ class: safeGetClass(token) })
     },
     // Ignore HTML blocks and inline HTML - they're already handled in preprocessMarkdown
     html_block: { ignore: true },
@@ -159,7 +193,7 @@ const tokenizer = new MarkdownIt("default", {
     html: true,
     linkify: false,
     typographer: false
-});
+}).use(markdownItAttrs);
 tokenizer.disable("strikethrough");
 tokenizer.enable("table");
 
@@ -173,6 +207,36 @@ const parser = new MarkdownParser(
 const serializer = new MarkdownSerializer(
     {
         ...defaultMarkdownSerializer.nodes,
+        paragraph: (state, node) => {
+            state.renderInline(node);
+            if (node.attrs.class) {
+                state.write(` {.${node.attrs.class.trim().replace(/\s+/g, " .")}}`);
+            }
+            state.closeBlock(node);
+        },
+        heading: (state, node) => {
+            state.write(state.repeat("#", node.attrs.level) + " ");
+            state.renderInline(node);
+            if (node.attrs.class) {
+                state.write(` {.${node.attrs.class.trim().replace(/\s+/g, " .")}}`);
+            }
+            state.closeBlock(node);
+        },
+        blockquote: (state, node) => {
+            state.wrapBlock("> ", null, node, () => state.renderContent(node));
+            if (node.attrs.class) {
+                state.ensureNewLine();
+                state.write(`{.${node.attrs.class.trim().replace(/\s+/g, " .")}}`);
+                state.closeBlock(node);
+            }
+        },
+        image: (state, node) => {
+            state.write("![" + state.esc(node.attrs.alt || "") + "](" + state.esc(node.attrs.src) +
+                (node.attrs.title ? " " + state.quote(node.attrs.title) : "") + ")");
+            if (node.attrs.class) {
+                state.write(`{.${node.attrs.class.trim().replace(/\s+/g, " .")}}`);
+            }
+        },
         frontmatter: (state, node) => {
             state.write("---\n");
             state.write(node.attrs.rawYaml || "");
@@ -233,17 +297,33 @@ const serializer = new MarkdownSerializer(
 
             state.ensureNewLine();
             state.write(lines.join("\n") + "\n");
+            if (node.attrs.class) {
+                state.write(`{.${node.attrs.class.trim().replace(/\s+/g, " .")}}\n`);
+            }
             state.closeBlock(node);
         }
     },
-    defaultMarkdownSerializer.marks
+    {
+        ...defaultMarkdownSerializer.marks,
+        span: {
+            open: (_state, mark) => {
+                return ""; // We'll handle it in close
+            },
+            close: (state, mark) => {
+                return `{.${mark.attrs.class.trim().replace(/\s+/g, " .")}}`;
+            }
+        }
+    }
 );
 
 function renderTableCellInline(state: any, cell: any): string {
     const CellState = MarkdownSerializerState as any;
     const cellState = new CellState((state as any).nodes, (state as any).marks, (state as any).options) as any;
     cellState.renderInline(cell, false);
-    const raw = (cellState.out || "").trim().replace(/\n+/g, " ");
+    let raw = (cellState.out || "").trim().replace(/\n+/g, " ");
+    if (cell.attrs.class) {
+        raw += ` {.${cell.attrs.class.trim().replace(/\s+/g, " .")}}`;
+    }
     return raw
         .replace(/\\/g, "\\\\")
         .replace(/\|/g, "\\|");
