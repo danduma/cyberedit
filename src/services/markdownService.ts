@@ -1,7 +1,9 @@
 import { defaultMarkdownParser, defaultMarkdownSerializer, MarkdownParser, MarkdownSerializer, MarkdownSerializerState } from "prosemirror-markdown";
 import MarkdownIt from "markdown-it";
 // @ts-ignore
-import markdownItAttrs from "markdown-it-attrs";
+import * as markdownItAttrsPkg from "markdown-it-attrs";
+// Safely handle CJS/ESM interop
+const markdownItAttrs = (markdownItAttrsPkg as any).default || markdownItAttrsPkg;
 import { citationSchema } from "../lib/prosemirror-schema";
 
 function convertFootnotesToLists(markdown: string): string {
@@ -111,7 +113,17 @@ function preprocessMarkdown(markdown: string): string {
 // Helper to safely get attributes from a token
 const safeGetClass = (token: any) => {
     try {
-        return token && typeof token.attrGet === 'function' ? token.attrGet("class") : null;
+        if (!token) return null;
+        // markdown-it-attrs might put attrs in 'attrs' array directly or via attrGet
+        const cls = typeof token.attrGet === 'function' ? token.attrGet("class") : null;
+        if (cls) return cls;
+        
+        // Fallback: sometimes attrs are exposed differently if plugin fails
+        if (Array.isArray(token.attrs)) {
+            const pair = token.attrs.find((a: any) => a[0] === 'class');
+            return pair ? pair[1] : null;
+        }
+        return null;
     } catch (e) {
         return null;
     }
@@ -187,13 +199,26 @@ function getTokenTextAlign(token: any): string | null {
     return match ? match[1].toLowerCase() : null;
 }
 
+// Configure tokenizer
 const tokenizer = new MarkdownIt("default", {
     ...defaultMarkdownParser.tokenizer.options,
     // Explicitly enable table support and HTML
     html: true,
     linkify: false,
     typographer: false
-}).use(markdownItAttrs);
+});
+
+// Use markdown-it-attrs if available
+try {
+    if (typeof markdownItAttrs === 'function') {
+        tokenizer.use(markdownItAttrs);
+    } else {
+        console.warn('markdown-it-attrs is not a function, skipping plugin');
+    }
+} catch (error) {
+    console.error('Failed to load markdown-it-attrs:', error);
+}
+
 tokenizer.disable("strikethrough");
 tokenizer.enable("table");
 
@@ -325,12 +350,12 @@ function renderTableCellInline(state: any, cell: any): string {
         raw += ` {.${cell.attrs.class.trim().replace(/\s+/g, " .")}}`;
     }
     return raw
-        .replace(/\\/g, "\\\\")
         .replace(/\|/g, "\\|");
 }
 
 export function parseMarkdownToProseMirror(markdown: string) {
     try {
+        console.log("Parsing markdown with length:", markdown?.length);
         let frontmatter = "";
         let content = markdown;
 
@@ -366,7 +391,8 @@ export function parseMarkdownToProseMirror(markdown: string) {
 
         return doc;
     } catch (error) {
-        console.error('Error parsing markdown:', error);
+        console.error('CRITICAL: Error parsing markdown in parseMarkdownToProseMirror:', error);
+        console.error('Stack:', (error as Error).stack);
         console.error('Markdown content:', markdown.substring(0, 500));
 
         // Try to create a fallback document that preserves content
