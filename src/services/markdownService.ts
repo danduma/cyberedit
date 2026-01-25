@@ -257,7 +257,7 @@ const serializer = new MarkdownSerializer(
         },
         image: (state, node) => {
             state.write("![" + state.esc(node.attrs.alt || "") + "](" + state.esc(node.attrs.src) +
-                (node.attrs.title ? " " + state.quote(node.attrs.title) : "") + ")");
+                (node.attrs.title ? " " + JSON.stringify(node.attrs.title) : "") + ")");
             if (node.attrs.class) {
                 state.write(`{.${node.attrs.class.trim().replace(/\s+/g, " .")}}`);
             }
