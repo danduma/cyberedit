@@ -64,6 +64,224 @@ function convertFootnotesToLists(markdown: string): string {
     return output.join("\n");
 }
 
+function normalizeWhitespace(value: string): string {
+    return value.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim();
+}
+
+function escapeMarkdownInlineText(value: string): string {
+    return value
+        .replace(/\\/g, "\\\\")
+        .replace(/\[/g, "\\[")
+        .replace(/\]/g, "\\]");
+}
+
+function escapeMarkdownTableCell(value: string): string {
+    return value
+        .replace(/\|/g, "\\|")
+        .replace(/\r?\n+/g, "<br>");
+}
+
+function escapeMarkdownImageTitle(value: string): string {
+    return value.replace(/"/g, '\\"');
+}
+
+function readElementTextWithBreaks(element: Element): string {
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("br").forEach((br) => {
+        br.replaceWith("\n");
+    });
+    return normalizeWhitespace((clone.textContent || "").replace(/\n\s*\n+/g, "\n"));
+}
+
+function extractBalancedDivBlock(input: string, startIndex: number): { block: string; endIndex: number } | null {
+    const divTagRegex = /<\/?div\b[^>]*>/gi;
+    divTagRegex.lastIndex = startIndex;
+
+    let depth = 0;
+    let match: RegExpExecArray | null = null;
+    while ((match = divTagRegex.exec(input)) !== null) {
+        const tag = match[0];
+        const isClosing = /^<\s*\/div/i.test(tag);
+        depth += isClosing ? -1 : 1;
+        if (depth === 0) {
+            return {
+                block: input.slice(startIndex, divTagRegex.lastIndex),
+                endIndex: divTagRegex.lastIndex
+            };
+        }
+    }
+
+    return null;
+}
+
+function findOpeningDivWithClass(input: string, fromIndex: number, targetClass: string): number | null {
+    const divOpenRegex = /<div\b[^>]*>/gi;
+    divOpenRegex.lastIndex = fromIndex;
+
+    let match: RegExpExecArray | null = null;
+    while ((match = divOpenRegex.exec(input)) !== null) {
+        const tag = match[0];
+        const classMatch = /class\s*=\s*["']([^"']+)["']/i.exec(tag);
+        if (!classMatch) {
+            continue;
+        }
+
+        const classList = classMatch[1]
+            .split(/\s+/)
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+
+        if (classList.includes(targetClass)) {
+            return match.index;
+        }
+    }
+
+    return null;
+}
+
+function buildInfoboxMarkdownFromHtmlBlock(html: string): string | null {
+    if (typeof DOMParser === "undefined") {
+        return null;
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const root = doc.body.firstElementChild as HTMLElement | null;
+    if (!root || !root.classList.contains("infobox")) {
+        return null;
+    }
+
+    const headingSource = root.querySelector(".infobox-name, .name");
+    const headingText = normalizeWhitespace(headingSource?.textContent || "Infobox");
+    const floatClass = root.classList.contains("infobox-left")
+        ? "infobox-left"
+        : root.classList.contains("infobox-right")
+            ? "infobox-right"
+            : "";
+    const headingClassAttr = `{.infobox${floatClass ? ` .${floatClass}` : ""}}`;
+
+    const lines: string[] = [`## ${escapeMarkdownInlineText(headingText)} ${headingClassAttr}`];
+
+    const image = root.querySelector(".infobox-image-container img, img");
+    if (image) {
+        const src = normalizeWhitespace(image.getAttribute("src") || "");
+        if (src) {
+            const alt = escapeMarkdownInlineText(normalizeWhitespace(image.getAttribute("alt") || headingText));
+            const caption = normalizeWhitespace(
+                root.querySelector(".infobox-image-caption, .caption")?.textContent ||
+                image.getAttribute("title") ||
+                ""
+            );
+            const titleSuffix = caption ? ` "${escapeMarkdownImageTitle(caption)}"` : "";
+            lines.push("", `![${alt}](${src}${titleSuffix})`);
+        }
+    }
+
+    const table = root.querySelector(".infobox-table, table");
+    if (table) {
+        const rowLines: string[] = [];
+        table.querySelectorAll("tr").forEach((row) => {
+            const cells = Array.from(row.querySelectorAll("th, td"));
+            if (cells.length < 2) {
+                return;
+            }
+
+            const label = escapeMarkdownTableCell(readElementTextWithBreaks(cells[0]));
+            const value = escapeMarkdownTableCell(readElementTextWithBreaks(cells[1]));
+            if (!label && !value) {
+                return;
+            }
+
+            rowLines.push(`| ${label} | ${value} |`);
+        });
+
+        if (rowLines.length > 0) {
+            lines.push("", "| Label | Value |", "| --- | --- |", ...rowLines);
+        }
+    }
+
+    return lines.join("\n");
+}
+
+function buildQuickFactsMarkdownFromHtmlBlock(html: string): string | null {
+    if (typeof DOMParser === "undefined") {
+        return null;
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const root = doc.body.firstElementChild as HTMLElement | null;
+    if (!root || !root.classList.contains("quick-facts")) {
+        return null;
+    }
+
+    const headingSource = root.querySelector(".quick-facts-header, .name, .infobox-name");
+    const headingText = normalizeWhitespace(headingSource?.textContent || "Quick Facts");
+
+    const lines: string[] = [`## ${escapeMarkdownInlineText(headingText)} {.quick-facts}`];
+    const table = root.querySelector(".infobox-table, table");
+    if (table) {
+        const rowLines: string[] = [];
+        table.querySelectorAll("tr").forEach((row) => {
+            const cells = Array.from(row.querySelectorAll("th, td"));
+            if (cells.length < 2) {
+                return;
+            }
+
+            const label = escapeMarkdownTableCell(readElementTextWithBreaks(cells[0]));
+            const value = escapeMarkdownTableCell(readElementTextWithBreaks(cells[1]));
+            if (!label && !value) {
+                return;
+            }
+
+            rowLines.push(`| ${label} | ${value} |`);
+        });
+
+        if (rowLines.length > 0) {
+            lines.push("", "| Label | Value |", "| --- | --- |", ...rowLines);
+        }
+    }
+
+    return lines.join("\n");
+}
+
+function replaceStructuredDivBlocks(
+    markdown: string,
+    className: string,
+    converter: (html: string) => string | null
+): string {
+    let output = "";
+    let cursor = 0;
+
+    while (cursor < markdown.length) {
+        const startIndex = findOpeningDivWithClass(markdown, cursor, className);
+        if (startIndex === null) {
+            output += markdown.slice(cursor);
+            break;
+        }
+
+        output += markdown.slice(cursor, startIndex);
+        const extracted = extractBalancedDivBlock(markdown, startIndex);
+        if (!extracted) {
+            output += markdown.slice(startIndex);
+            break;
+        }
+
+        const converted = converter(extracted.block);
+        output += converted || extracted.block;
+        cursor = extracted.endIndex;
+    }
+
+    return output;
+}
+
+function convertStructuredHtmlBlocksToMarkdown(markdown: string): string {
+    let processed = markdown;
+    processed = replaceStructuredDivBlocks(processed, "infobox", buildInfoboxMarkdownFromHtmlBlock);
+    processed = replaceStructuredDivBlocks(processed, "quick-facts", buildQuickFactsMarkdownFromHtmlBlock);
+    return processed;
+}
+
 // Preprocess markdown to convert HTML img tags to markdown image syntax and handle HTML elements
 function preprocessMarkdown(markdown: string): string {
     if (!markdown) return "";
@@ -74,7 +292,7 @@ function preprocessMarkdown(markdown: string): string {
     const htmlImgWithAltReversedRegex = /<img[^>]*src\s*=\s*["']([^"']*)["'][^>]*alt\s*=\s*["']([^"']*)["'][^>]*>/gi;
     const htmlImgNoAltRegex = /<img(?![^>]*alt\s*=)[^>]*src\s*=\s*["']([^"']*)["'][^>]*>/gi;
 
-    let processed = markdown;
+    let processed = convertStructuredHtmlBlocksToMarkdown(markdown);
 
     // Handle img tags with alt attribute (alt before src)
     processed = processed.replace(htmlImgWithAltRegex, (match, alt, src) => {

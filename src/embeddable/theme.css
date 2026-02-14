@@ -183,36 +183,210 @@
 
 /* Specialized Markdown Tag Visualizations */
 
-/* Infobox Styles */
+/* Infobox Styles (Wrapper + Tag-Driven Heading/Table) */
 .ProseMirror .infobox {
-  border: 1px solid var(--border);
-  padding: 1rem;
-  background: var(--card);
+  background-color: #f8fafc;
+  border: 1px solid #d1d5db;
   border-radius: 0.75rem;
   margin: 1.5rem 0;
-  position: relative;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-}
-
-.ProseMirror .infobox::before {
-  content: "INFOBOX";
-  position: absolute;
-  top: -0.6rem;
-  right: 1rem;
-  font-size: 0.6rem;
-  font-weight: 800;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  padding: 0.1rem 0.5rem;
-  border-radius: 1rem;
-  letter-spacing: 0.05em;
-}
-
-.ProseMirror .infobox-right {
+  margin-left: 1.5rem;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgb(0 0 0 / 0.05);
   float: right;
-  width: 320px;
-  margin-left: 2rem;
+  clear: right;
+  width: min(100%, 22rem);
+  box-sizing: border-box;
+}
+
+.ProseMirror .infobox .infobox-name,
+.ProseMirror .infobox .name {
+  background-color: #f36614;
+  color: #ffffff;
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ProseMirror .infobox .infobox-image-container {
+  display: block;
+  margin: 0.55rem auto 0;
+  max-width: 94%;
+}
+
+.ProseMirror .infobox .infobox-image-container img {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.35rem;
+  box-shadow: none;
+}
+
+.ProseMirror .infobox .infobox-image-caption,
+.ProseMirror .infobox .caption {
+  text-align: center;
+  padding: 0.25rem 1rem 0.8rem;
+  font-style: italic;
+  color: #4b5563;
+  font-size: 0.85rem;
+}
+
+.ProseMirror .infobox .infobox-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.ProseMirror .infobox .infobox-table tr {
+  border-top: 1px solid #e5e7eb;
+}
+
+.ProseMirror .infobox .infobox-table td {
+  border: none;
+  padding: 0.6rem 0.8rem;
+  vertical-align: top;
+}
+
+.ProseMirror .infobox .infobox-table .infobox-label,
+.ProseMirror .infobox .infobox-table td:first-child {
+  font-weight: 600;
+  width: 35%;
+  background-color: #f1f5f9;
+}
+
+.ProseMirror .infobox .infobox-table .infobox-value,
+.ProseMirror .infobox .infobox-table td:nth-child(2) {
+  width: 65%;
+}
+
+.ProseMirror .infobox.infobox-right {
+  float: right;
+  width: min(100%, 22rem);
+  margin-left: 1.5rem;
+}
+
+.ProseMirror .infobox.infobox-left {
+  float: right;
+  width: min(100%, 22rem);
+  margin-left: 1.5rem;
+  margin-right: 0;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox {
+  margin-top: 1.5rem;
+  margin-bottom: 0;
+  width: min(100%, 22rem);
+  box-sizing: border-box;
+  float: right;
+  clear: right;
+  margin-left: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-bottom: none;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: linear-gradient(110deg, #f36614 0%, #ff8c42 100%);
+  color: #ffffff;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + table,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p + table {
+  width: min(100%, 22rem);
+  box-sizing: border-box;
+  float: right;
+  clear: right;
+  margin-left: 1.5rem;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p {
   margin-top: 0;
+  margin-bottom: 0;
+  padding: 0.55rem 0.7rem 0.25rem;
+  border-left: 1px solid #d1d5db;
+  border-right: 1px solid #d1d5db;
+  background-color: #f8fafc;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p img {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  border-radius: 0.35rem;
+  box-shadow: none;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + table,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p + table {
+  margin-top: 0;
+  border: 1px solid #d1d5db;
+  border-top: none;
+  border-radius: 0 0 0.75rem 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgb(0 0 0 / 0.05);
+  font-size: 0.87rem;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + table td,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p + table td,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + table th,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p + table th {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + table td:first-child,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p + table td:first-child {
+  width: 35%;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
+  color: #334155;
+  background-color: #f1f5f9;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-right,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-right + p,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-right + table,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-right + p + table {
+  margin-left: auto;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-left,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-left + p,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-left + table,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox.infobox-left + p + table {
+  margin-left: 1.5rem;
+  margin-right: 0;
+}
+
+@media (max-width: 900px) {
+  .ProseMirror .infobox,
+  .ProseMirror .infobox.infobox-right,
+  .ProseMirror .infobox.infobox-left,
+  .ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox,
+  .ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p,
+  .ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + table,
+  .ProseMirror :is(h1, h2, h3, h4, h5, h6).infobox + p + table {
+    float: none;
+    clear: both;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
 }
 
 /* FAQ Styles */
@@ -301,21 +475,65 @@
   color: var(--primary-foreground);
 }
 
-/* Quick Facts */
+/* Quick Facts (Wrapper + Tag-Driven Heading/Table) */
 .ProseMirror .quick-facts {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  padding: 1rem;
-  border-radius: 0.5rem;
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  margin: 1.5rem 0;
+  overflow: hidden;
 }
 
-.ProseMirror .quick-facts::before {
-  content: "QUICK FACTS";
-  display: block;
-  font-size: 0.7rem;
+.ProseMirror .quick-facts .quick-facts-header {
+  background-color: #0f766e;
+  color: #f8fafc;
+  padding: 0.72rem 1rem;
   font-weight: 700;
-  color: #64748b;
-  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).quick-facts {
+  margin-top: 1.5rem;
+  margin-bottom: 0;
+  padding: 0.72rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-bottom: none;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background-color: #0f766e;
+  color: #f8fafc;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).quick-facts + table {
+  margin-top: 0;
+  border: 1px solid #cbd5e1;
+  border-top: none;
+  border-radius: 0 0 0.75rem 0.75rem;
+  overflow: hidden;
+  font-size: 0.88rem;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).quick-facts + table td,
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).quick-facts + table th {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.ProseMirror :is(h1, h2, h3, h4, h5, h6).quick-facts + table td:first-child {
+  width: 35%;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
+  color: #334155;
+  background-color: #f1f5f9;
 }
 
 /* Table Cell Effect Styles */
@@ -375,4 +593,14 @@
 
 .ProseMirror .has-tags:hover::after {
   opacity: 1;
+}
+
+.ProseMirror .has-tags.infobox,
+.ProseMirror .has-tags.quick-facts {
+  outline: none;
+}
+
+.ProseMirror .has-tags.infobox::after,
+.ProseMirror .has-tags.quick-facts::after {
+  display: none;
 }
